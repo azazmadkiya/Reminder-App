@@ -149,7 +149,7 @@ class BackupManager(
 
             val uri = FileProvider.getUriForFile(
                 context,
-                "${context.packageName}.fileprovider",
+                "com.reminder.app.azaz.fileprovider",
                 file
             )
 

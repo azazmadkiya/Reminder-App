@@ -123,6 +123,45 @@ fun MoreScreen(onOpenDrawer: () -> Unit = {}) {
         }
     }
 
+    // File Picker for Saving Encrypted Backup
+    val saveEncryptedBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isLoadingBackup = true
+                val result = com.example.data.backup.DatabaseBackupHelper.backupDatabase(context, uri)
+                isLoadingBackup = false
+                if (result.isSuccess) {
+                    lastBackupTime = System.currentTimeMillis()
+                    snackbarHostState.showSnackbar("Encrypted backup saved successfully!")
+                } else {
+                    snackbarHostState.showSnackbar("Failed to create encrypted backup.")
+                }
+            }
+        }
+    }
+
+    // File Picker for Opening Encrypted Backup
+    val openEncryptedBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isLoadingBackup = true
+                val result = com.example.data.backup.DatabaseBackupHelper.restoreDatabase(context, uri)
+                isLoadingBackup = false
+                if (result.isSuccess) {
+                    snackbarHostState.showSnackbar("Encrypted backup restored! Restarting app...")
+                    kotlinx.coroutines.delay(1500)
+                    kotlin.system.exitProcess(0)
+                } else {
+                    snackbarHostState.showSnackbar("Failed to restore encrypted backup. Check if password is correct or file is valid.")
+                }
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -679,6 +718,36 @@ fun MoreScreen(onOpenDrawer: () -> Unit = {}) {
                         Icon(Icons.Filled.Restore, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Restore Data from Backup File")
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    Text("Full Database Backup (Encrypted)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                    Text("Securely backup all financial data into an encrypted .enc file that can be fully restored.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    OutlinedButton(
+                        onClick = {
+                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
+                            saveEncryptedBackupLauncher.launch("Reminder_Encrypted_$timestamp.enc")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Lock, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Export Encrypted Backup")
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            openEncryptedBackupLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.RestorePage, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Restore Encrypted Backup")
                     }
                 }
             }

@@ -26,11 +26,15 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "reminder_database"
                 )
+                .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance
             }
+        }
+        fun resetInstance() {
+            INSTANCE = null
         }
     }
 }

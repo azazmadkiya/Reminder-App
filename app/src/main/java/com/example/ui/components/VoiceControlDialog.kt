@@ -1,5 +1,10 @@
 package com.example.ui.components
 
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +34,55 @@ fun VoiceControlDialog(
 ) {
     var commandText by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    val context = LocalContext.current
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+
+    DisposableEffect(Unit) {
+        val listener = object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { errorMessage = null }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onError(error: Int) {
+                isListening = false
+                errorMessage = when(error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
+                    SpeechRecognizer.ERROR_CLIENT -> "Client side error"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
+                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No match found"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "RecognitionService busy"
+                    SpeechRecognizer.ERROR_SERVER -> "Error from server"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
+                    else -> "Didn't understand, please try again."
+                }
+            }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    commandText = matches[0]
+                    onCommandSubmit(commandText)
+                    onDismiss()
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    commandText = matches[0]
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+        speechRecognizer.setRecognitionListener(listener)
+        
+        onDispose {
+            speechRecognizer.destroy()
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -85,15 +140,26 @@ fun VoiceControlDialog(
                 val tealColor = Color(0xFF00897B)
                 Surface(
                     shape = CircleShape,
-                    color = tealColor,
+                    color = if (isListening) Color(0xFFE53935) else tealColor,
                     modifier = Modifier
                         .size(100.dp)
                         .clip(CircleShape)
                         .clickable {
-                            isListening = !isListening
-                            if (!isListening && commandText.isNotBlank()) {
-                                onCommandSubmit(commandText)
-                                onDismiss()
+                            if (isListening) {
+                                speechRecognizer.stopListening()
+                                isListening = false
+                            } else {
+                                if (SpeechRecognizer.isRecognitionAvailable(context)) {
+                                    errorMessage = null
+                                    isListening = true
+                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                                    }
+                                    speechRecognizer.startListening(intent)
+                                } else {
+                                    errorMessage = "Voice recognition is not available on this device. Please type your command."
+                                }
                             }
                         }
                 ) {
@@ -110,12 +176,22 @@ fun VoiceControlDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = if (isListening) "Listening... Speak now (Tap to finish)" else "Tap the mic to start speaking",
+                    text = if (isListening) "Listening... Tap to stop" else "Tap the mic to start speaking",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = tealColor,
+                    color = if (isListening) Color(0xFFE53935) else tealColor,
                     textAlign = TextAlign.Center
                 )
+                
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
