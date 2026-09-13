@@ -110,6 +110,10 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
     }
 
     override fun scheduleReminder(reminder: ReminderEntity) {
+        if (reminder.notificationSettings == "None") {
+            cancel(reminder.id)
+            return
+        }
         val triggerTime = reminder.dueTime ?: reminder.dueDate
         schedule(
             reminderId = reminder.id,

@@ -2,6 +2,7 @@ package com.example.ui.reminders
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import java.util.Date
 import java.util.Locale
 
 enum class ReminderLeadTime(val title: String, val offsetMillis: Long) {
+    NONE("No Alert", -1L),
     ON_DUE_DATE("On Due Date", 0L),
     ONE_DAY_BEFORE("1 Day Before", 24 * 60 * 60 * 1000L),
     TWO_DAYS_BEFORE("2 Days Before", 2 * 24 * 60 * 60 * 1000L),
@@ -92,6 +94,7 @@ fun AddReminderScreen(
     var dueMinute by remember { mutableIntStateOf(0) }
 
     // 3. Set Reminder Date State
+    var isAlertEnabled by remember { mutableStateOf(true) }
     var selectedReminderOption by remember { mutableStateOf(ReminderLeadTime.ONE_DAY_BEFORE) }
     var customReminderMillis by remember {
         mutableLongStateOf(
@@ -124,7 +127,13 @@ fun AddReminderScreen(
                 dueDateMillis = reminder.dueDate
                 
                 // For simplicity, we just set it to CUSTOM if it's an edit, or we could try to reverse engineer the LeadTime.
-                selectedReminderOption = ReminderLeadTime.CUSTOM
+                if (reminder.notificationSettings == "None") {
+                    isAlertEnabled = false
+                    selectedReminderOption = ReminderLeadTime.NONE
+                } else {
+                    isAlertEnabled = true
+                    selectedReminderOption = ReminderLeadTime.CUSTOM
+                }
                 customReminderMillis = reminder.dueTime ?: reminder.dueDate
                 
                 val cal = Calendar.getInstance().apply { timeInMillis = dueDateMillis }
@@ -145,7 +154,8 @@ fun AddReminderScreen(
     val fullDateTimeFormatter = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
 
     // Calculate actual trigger time based on reminder option
-    val calculatedReminderTriggerMillis = when (selectedReminderOption) {
+    val calculatedReminderTriggerMillis = if (!isAlertEnabled) null else when (selectedReminderOption) {
+        ReminderLeadTime.NONE -> null
         ReminderLeadTime.ON_DUE_DATE -> dueDateMillis
         ReminderLeadTime.ONE_DAY_BEFORE -> dueDateMillis - ReminderLeadTime.ONE_DAY_BEFORE.offsetMillis
         ReminderLeadTime.TWO_DAYS_BEFORE -> dueDateMillis - ReminderLeadTime.TWO_DAYS_BEFORE.offsetMillis
@@ -693,21 +703,33 @@ fun AddReminderScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Set Reminder Alert Date & Time",
+                            "Set Reminder Alert",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = isAlertEnabled,
+                            onCheckedChange = { 
+                                isAlertEnabled = it 
+                                if (!it) selectedReminderOption = ReminderLeadTime.NONE
+                                else if (selectedReminderOption == ReminderLeadTime.NONE) selectedReminderOption = ReminderLeadTime.ON_DUE_DATE
+                            }
                         )
                     }
                     Text(
-                        "When should the phone sound an alarm & notify you before the due date?",
+                        if (isAlertEnabled) "When should the phone sound an alarm & notify you before the due date?" else "No alert will be scheduled. Only Notification Mandatory (Appears in list).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     // Options list
-                    ReminderLeadTime.values().forEach { option ->
-                        val isSelected = (selectedReminderOption == option)
+                    AnimatedVisibility(visible = isAlertEnabled) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ReminderLeadTime.values().forEach { option ->
+                                if (option == ReminderLeadTime.NONE) return@forEach
+                                val isSelected = (selectedReminderOption == option)
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
@@ -733,6 +755,7 @@ fun AddReminderScreen(
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
                                     val subtitle = when (option) {
+                                        ReminderLeadTime.NONE -> ""
                                         ReminderLeadTime.ON_DUE_DATE -> "Alerts at deadline time (${shortDateFormatter.format(Date(dueDateMillis))})"
                                         ReminderLeadTime.ONE_DAY_BEFORE -> "Alerts 24 hours prior to deadline (Recommended)"
                                         ReminderLeadTime.TWO_DAYS_BEFORE -> "Alerts 2 days in advance"
@@ -747,6 +770,8 @@ fun AddReminderScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                            }
+                        }
                             }
                         }
                     }
@@ -811,18 +836,20 @@ fun AddReminderScreen(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Text(
-                                    fullDateTimeFormatter.format(Date(calculatedReminderTriggerMillis)),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                if (calculatedReminderTriggerMillis < System.currentTimeMillis()) {
+                                if (calculatedReminderTriggerMillis != null) {
                                     Text(
-                                        "⚠️ Alert time is in the past; alarm will fire right away after saving.",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.error
+                                        fullDateTimeFormatter.format(Date(calculatedReminderTriggerMillis)),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
+                                    if (calculatedReminderTriggerMillis < System.currentTimeMillis()) {
+                                        Text(
+                                            "⚠️ Alert time is in the past; alarm will fire right away after saving.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -882,7 +909,9 @@ fun AddReminderScreen(
                             permissionState.requestPermission()
                         }
 
-                        val notificationDescription = when (selectedReminderOption) {
+                        val notificationDescription = if (!isAlertEnabled) {
+                            "None"
+                        } else when (selectedReminderOption) {
                             ReminderLeadTime.CUSTOM -> "Custom: ${fullDateTimeFormatter.format(Date(customReminderMillis))}"
                             ReminderLeadTime.QUICK_TEST -> "Quick Test (15s)"
                             else -> "${selectedReminderOption.title} at ${timeFormatter.format(Date(dueDateMillis))}"
