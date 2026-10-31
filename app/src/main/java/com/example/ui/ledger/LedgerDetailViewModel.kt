@@ -34,22 +34,14 @@ class LedgerDetailViewModel(
             initialValue = emptyList()
         )
         
+    fun calculateAging(party: PartyEntity, transactions: List<TransactionEntity>): com.example.utils.AgingResult {
+        return com.example.utils.LedgerAgingUtils.calculateAging(party, transactions)
+    }
+
     // Calculate net balance synchronously based on transactions flow
     fun calculateBalance(party: PartyEntity, transactions: List<TransactionEntity>): Pair<Double, String> {
-        var balance = if (party.balanceType == "Receivable") party.openingBalance else -party.openingBalance
-
-        for (txn in transactions) {
-            when (txn.type) {
-                "Payment Received" -> balance -= txn.amount
-                "Payment Paid" -> balance += txn.amount
-                "Debit" -> balance += txn.amount
-                "Credit" -> balance -= txn.amount
-            }
-        }
-
-        val netBalance = Math.abs(balance)
-        val balanceType = if (balance >= 0) "Receivable" else "Payable"
-        return Pair(netBalance, balanceType)
+        val aging = calculateAging(party, transactions)
+        return Pair(aging.netBalance, aging.balanceType)
     }
 
     fun deleteTransaction(transaction: TransactionEntity) {

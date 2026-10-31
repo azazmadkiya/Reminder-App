@@ -15,6 +15,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import com.example.utils.CountdownType
+import com.example.utils.CountdownUtils
+
 data class HomeUiState(
     val todayReminders: Int = 0,
     val upcomingReminders: Int = 0,
@@ -35,12 +38,9 @@ class HomeViewModel(
         repository.allReminders,
         repository.allTransactions
     ) { parties, reminders, transactions ->
-        val now = System.currentTimeMillis()
-        val oneDayMillis = 24 * 60 * 60 * 1000L
-        
-        val overdue = reminders.count { it.status == "Overdue" || (it.dueDate < now && it.status != "Completed") }
-        val today = reminders.count { Math.abs(it.dueDate - now) < oneDayMillis && it.status != "Completed" }
-        val upcoming = reminders.count { it.dueDate > now + oneDayMillis && it.status != "Completed" }
+        val overdue = reminders.count { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.OVERDUE }
+        val today = reminders.count { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.TODAY }
+        val upcoming = reminders.count { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.UPCOMING }
         
         var totalReceivable = 0.0
         var totalPayable = 0.0

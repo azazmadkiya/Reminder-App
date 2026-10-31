@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ReminderApplication
 import kotlinx.coroutines.launch
+import com.example.ui.dashboard.FinancialDashboardScreen
 import com.example.ui.home.HomeScreen
 import com.example.ui.ledger.AddVoucherScreen
 import com.example.ui.ledger.LedgerDetailScreen
@@ -67,6 +68,7 @@ fun AppNavigation() {
 
         val items = listOf(
             Screen.Home,
+            Screen.FinancialDashboard,
             Screen.Reminders,
             Screen.Ledger,
             Screen.Parties,
@@ -115,9 +117,46 @@ fun AppNavigation() {
                 startDestination = Screen.Home.route,
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable(Screen.Home.route) { HomeScreen(onOpenDrawer = { onOpenDrawer() }) }
+                composable(Screen.Home.route) { 
+                    HomeScreen(
+                        onOpenDrawer = { onOpenDrawer() },
+                        onNavigateToReminders = { filter ->
+                            navController.navigate("reminders?filter=$filter")
+                        },
+                        onNavigateToParties = {
+                            navController.navigate(Screen.Parties.route)
+                        },
+                        onNavigateToFinancialDashboard = {
+                            navController.navigate(Screen.FinancialDashboard.route)
+                        }
+                    ) 
+                }
+                composable(Screen.FinancialDashboard.route) {
+                    FinancialDashboardScreen(
+                        onBackClick = { navController.popBackStack() },
+                        onOpenDrawer = { onOpenDrawer() },
+                        onNavigateToParties = { navController.navigate(Screen.Parties.route) },
+                        onNavigateToLedger = { navController.navigate(Screen.Ledger.route) }
+                    )
+                }
+                composable(
+                    route = "reminders?filter={filter}",
+                    arguments = listOf(navArgument("filter") { 
+                        type = NavType.StringType 
+                        defaultValue = "All"
+                    })
+                ) { backStackEntry ->
+                    val filter = backStackEntry.arguments?.getString("filter") ?: "All"
+                    RemindersScreen(
+                        initialFilter = filter,
+                        onAddReminderClick = { navController.navigate("add_reminder") },
+                        onEditReminderClick = { reminderId -> navController.navigate("edit_reminder/$reminderId") },
+                        onOpenDrawer = { onOpenDrawer() }
+                    ) 
+                }
                 composable(Screen.Reminders.route) { 
                     RemindersScreen(
+                        initialFilter = "All",
                         onAddReminderClick = { navController.navigate("add_reminder") },
                         onEditReminderClick = { reminderId -> navController.navigate("edit_reminder/$reminderId") },
                         onOpenDrawer = { onOpenDrawer() }
@@ -134,6 +173,7 @@ fun AppNavigation() {
                     PartiesScreen(
                         onAddPartyClick = { navController.navigate("add_party") },
                         onEditPartyClick = { partyId -> navController.navigate("edit_party/$partyId") },
+                        onPartyClick = { partyId -> navController.navigate("ledger_detail/$partyId") },
                         onOpenDrawer = { onOpenDrawer() }
                     ) 
                 }
@@ -194,6 +234,7 @@ fun AppNavigation() {
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Home : Screen("home", "Home", Icons.Filled.Home)
+    object FinancialDashboard : Screen("financial_dashboard", "Financial Health", Icons.Filled.TrendingUp)
     object Reminders : Screen("reminders", "Reminders", Icons.Filled.Notifications)
     object Ledger : Screen("ledger", "Ledger", Icons.Filled.List)
     object Parties : Screen("parties", "Parties & Accounts", Icons.Filled.Person)

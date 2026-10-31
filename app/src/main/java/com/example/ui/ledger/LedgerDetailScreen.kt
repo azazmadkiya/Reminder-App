@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -161,16 +162,23 @@ fun LedgerDetailScreen(
                 CircularProgressIndicator()
             }
         } else {
-            val (netBalance, balanceType) = viewModel.calculateBalance(party!!, transactions)
+            val aging = viewModel.calculateAging(party!!, transactions)
+            val netBalance = aging.netBalance
+            val balanceType = aging.balanceType
             val isReceivable = balanceType == "Receivable"
-            val balanceColor = if (isReceivable) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
+            val isPending = netBalance > 0.01
+            val balanceColor = if (isPending) {
+                if (isReceivable) Color(0xFF047857) else Color(0xFFB91C1C)
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                // Header card with balance
+                // Header card with balance and outstanding pending days
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -198,11 +206,60 @@ fun LedgerDetailScreen(
                             color = balanceColor
                         )
                         Text(
-                            text = balanceType,
+                            text = if (isPending) balanceType else "Account Settled",
                             style = MaterialTheme.typography.bodyMedium,
                             color = balanceColor,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.SemiBold
                         )
+
+                        if (isPending) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isReceivable) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFFEF4444).copy(alpha = 0.15f),
+                                modifier = Modifier.padding(top = 10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.HourglassTop,
+                                        contentDescription = null,
+                                        tint = balanceColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "${aging.outstandingDays} Days Pending (${balanceType})",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = balanceColor
+                                    )
+                                }
+                            }
+
+                            if (aging.oldestPendingDate != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Pending since ${dateFormatter.format(Date(aging.oldestPendingDate))} (${aging.outstandingDays} days ago)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Text(
+                                    text = "✓ Account Fully Settled (₹0.00)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -287,6 +344,9 @@ fun TransactionCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val daysAgo = com.example.utils.LedgerAgingUtils.getDaysAgo(txn.date)
+            val daysAgoText = com.example.utils.LedgerAgingUtils.formatDaysAgo(txn.date)
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = txn.type,
@@ -294,7 +354,7 @@ fun TransactionCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = dateFormatter.format(Date(txn.date)),
+                    text = "${dateFormatter.format(Date(txn.date))} • $daysAgoText",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -310,6 +370,22 @@ fun TransactionCard(
                         text = txn.description,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Aging chip for voucher
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = color.copy(alpha = 0.12f),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = if (daysAgo == 0) "Recorded Today" else "$daysAgo Days Ago",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }

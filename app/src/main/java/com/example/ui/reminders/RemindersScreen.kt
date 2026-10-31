@@ -44,10 +44,17 @@ import com.example.utils.ExportUtils
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.example.utils.CountdownType
+import com.example.utils.CountdownUtils
+import com.example.utils.ReminderCountdownInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemindersScreen(
+    initialFilter: String = "All",
     onAddReminderClick: () -> Unit = {},
     onEditReminderClick: (Long) -> Unit = {},
     onOpenDrawer: () -> Unit = {}
@@ -63,7 +70,7 @@ fun RemindersScreen(
 
     val permissionState = rememberNotificationPermissionState()
     var showTestNotificationSnackbar by remember { mutableStateOf(false) }
-    var selectedFilter by remember { mutableStateOf("All") }
+    var selectedFilter by rememberSaveable(initialFilter) { mutableStateOf(initialFilter) }
     var selectedDateFilter by remember { mutableStateOf("All Time") }
     var reminderToDelete by remember { mutableStateOf<ReminderEntity?>(null) }
     var showExportMenu by remember { mutableStateOf(false) }
@@ -201,21 +208,41 @@ fun RemindersScreen(
         }
     }
 
-    val filterOptions = listOf("All", "Pending", "GST", "Income Tax", "Payment", "Completed")
+    val filterOptions = listOf("All", "Upcoming", "Overdue", "Today", "Pending", "GST", "Income Tax", "Payment", "Completed")
     val dateFilterOptions = listOf("All Time", "Today", "This Week", "This Month")
+
+    val upcomingRemindersList = remember(reminders) {
+        reminders.filter { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.UPCOMING }
+            .sortedBy { it.dueDate }
+    }
+    val overdueRemindersList = remember(reminders) {
+        reminders.filter { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.OVERDUE }
+            .sortedBy { it.dueDate }
+    }
+    val todayRemindersList = remember(reminders) {
+        reminders.filter { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.TODAY }
+            .sortedBy { it.dueTime ?: it.dueDate }
+    }
 
     val filteredReminders = remember(reminders, selectedFilter, selectedDateFilter, searchQuery, partyMap) {
         val catFiltered = when (selectedFilter) {
-            "All" -> reminders
-            "Pending" -> reminders.filter { it.status != "Completed" }
-            "GST" -> reminders.filter { it.category == "GST" }
-            "Income Tax" -> reminders.filter { it.category == "Income Tax" }
-            "Payment" -> reminders.filter { it.category.contains("Payment") }
-            "Completed" -> reminders.filter { it.status == "Completed" }
+            "All" -> reminders.sortedWith(
+                compareBy<ReminderEntity> { it.status == "Completed" }
+                    .thenBy { it.dueDate }
+            )
+            "Upcoming" -> reminders.filter { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.UPCOMING }
+                .sortedBy { it.dueDate }
+            "Overdue" -> reminders.filter { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.OVERDUE }
+                .sortedBy { it.dueDate }
+            "Today" -> reminders.filter { it.status != "Completed" && CountdownUtils.getCountdown(it.dueDate, false).type == CountdownType.TODAY }
+                .sortedBy { it.dueTime ?: it.dueDate }
+            "Pending" -> reminders.filter { it.status != "Completed" }.sortedBy { it.dueDate }
+            "GST" -> reminders.filter { it.category == "GST" }.sortedBy { it.dueDate }
+            "Income Tax" -> reminders.filter { it.category == "Income Tax" }.sortedBy { it.dueDate }
+            "Payment" -> reminders.filter { it.category.contains("Payment") }.sortedBy { it.dueDate }
+            "Completed" -> reminders.filter { it.status == "Completed" }.sortedByDescending { it.updatedAt }
             else -> reminders
         }
-        
-        val now = System.currentTimeMillis()
         
         val dateFiltered = when (selectedDateFilter) {
             "Today" -> {
@@ -378,6 +405,53 @@ fun RemindersScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
+            // Countdown Overview Summary Banner
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val nextUpcomingCountdown = upcomingRemindersList.firstOrNull()?.let { 
+                    CountdownUtils.getCountdown(it.dueDate, false, it.dueTime) 
+                }
+                CountdownOverviewCard(
+                    title = "Upcoming",
+                    count = upcomingRemindersList.size,
+                    countdownHint = nextUpcomingCountdown?.primaryText ?: "0 left",
+                    icon = Icons.Filled.HourglassTop,
+                    color = Color(0xFF3B82F6),
+                    isSelected = selectedFilter == "Upcoming",
+                    onClick = { selectedFilter = if (selectedFilter == "Upcoming") "All" else "Upcoming" },
+                    modifier = Modifier.weight(1f)
+                )
+
+                CountdownOverviewCard(
+                    title = "Due Today",
+                    count = todayRemindersList.size,
+                    countdownHint = if (todayRemindersList.isNotEmpty()) "Action due" else "Clear",
+                    icon = Icons.Filled.Alarm,
+                    color = Color(0xFFF59E0B),
+                    isSelected = selectedFilter == "Today",
+                    onClick = { selectedFilter = if (selectedFilter == "Today") "All" else "Today" },
+                    modifier = Modifier.weight(1f)
+                )
+
+                val worstOverdueCountdown = overdueRemindersList.firstOrNull()?.let { 
+                    CountdownUtils.getCountdown(it.dueDate, false, it.dueTime) 
+                }
+                CountdownOverviewCard(
+                    title = "Overdue",
+                    count = overdueRemindersList.size,
+                    countdownHint = worstOverdueCountdown?.primaryText ?: "0 past",
+                    icon = Icons.Filled.WarningAmber,
+                    color = Color(0xFFEF4444),
+                    isSelected = selectedFilter == "Overdue",
+                    onClick = { selectedFilter = if (selectedFilter == "Overdue") "All" else "Overdue" },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             // Filter Chips
             LazyRow(
                 modifier = Modifier
@@ -487,6 +561,9 @@ fun ReminderItemCard(
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
     val dateTimeFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
     val isCompleted = reminder.status == "Completed"
+    val countdown = remember(reminder.dueDate, reminder.status, reminder.dueTime) {
+        CountdownUtils.getCountdown(reminder.dueDate, isCompleted, reminder.dueTime)
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -563,6 +640,63 @@ fun ReminderItemCard(
                             contentDescription = "Delete Reminder",
                             tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Prominent Countdown Tag / Banner
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = countdown.containerColor,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            countdown.icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = countdown.contentColor
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = countdown.badgeLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = countdown.contentColor
+                            )
+                            Text(
+                                text = countdown.fullStatusText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = countdown.contentColor.copy(alpha = 0.85f)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = countdown.badgeColor,
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(
+                            text = countdown.primaryText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -650,6 +784,12 @@ fun ReminderItemCard(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold
                         )
+                        Text(
+                            countdown.daysCountLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = countdown.contentColor
+                        )
                     }
                 }
 
@@ -694,6 +834,76 @@ fun ReminderItemCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CountdownOverviewCard(
+    title: String,
+    count: Int,
+    countdownHint: String,
+    icon: ImageVector,
+    color: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) color.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant
+        ),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, color) else null
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = color
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = color.copy(alpha = 0.12f),
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                Text(
+                    text = countdownHint,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
             }
         }
     }

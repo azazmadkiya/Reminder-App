@@ -18,20 +18,15 @@ class PartiesViewModel(private val repository: AppRepository) : ViewModel() {
         repository.allTransactions
     ) { parties, transactions ->
         parties.map { party ->
-            var balance = if (party.balanceType == "Receivable") party.openingBalance else -party.openingBalance
             val partyTransactions = transactions.filter { it.partyId == party.id }
-            for (txn in partyTransactions) {
-                when (txn.type) {
-                    "Payment Received" -> balance -= txn.amount
-                    "Payment Paid" -> balance += txn.amount
-                    "Debit" -> balance += txn.amount
-                    "Credit" -> balance -= txn.amount
-                }
-            }
+            val aging = com.example.utils.LedgerAgingUtils.calculateAging(party, partyTransactions)
             PartyLedgerSummary(
                 party = party,
-                netBalance = Math.abs(balance),
-                balanceType = if (balance >= 0) "Receivable" else "Payable"
+                netBalance = aging.netBalance,
+                balanceType = aging.balanceType,
+                outstandingDays = aging.outstandingDays,
+                oldestPendingDate = aging.oldestPendingDate,
+                statusText = aging.displayBadge
             )
         }
     }.stateIn(
